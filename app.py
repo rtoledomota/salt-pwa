@@ -1,4 +1,5 @@
 import io
+import unicodedata
 import pandas as pd
 import streamlit as st
 import requests
@@ -18,36 +19,35 @@ TITULOS = [
     "TRANSFERENCIAS SAIDAS",  # fallback sem acento
 ]
 
+def remover_acentos(s: str) -> str:
+    return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii')
+
+def normalizar(s: str) -> str:
+    return remover_acentos((s or "").strip().upper())
+
 @st.cache_data(ttl=30)
 def baixar_linhas_csv(url: str) -> list[list[str]]:
     r = requests.get(url, timeout=30)
     r.raise_for_status()
-    # lê como CSV "genérico" (pandas pode falhar quando as linhas têm colunas diferentes)
     raw = r.text.splitlines()
-    # separa por vírgula respeitando aspas via pandas python engine:
     df_raw = pd.read_csv(io.StringIO("\n".join(raw)), header=None, dtype=str, engine="python")
     df_raw = df_raw.fillna("")
     return df_raw.values.tolist()
 
-def normalizar(s: str) -> str:
-    return (s or "").strip().upper()
-
 def achar_linha_titulo(rows, titulo):
-    titulo = normalizar(titulo)
+    titulo_norm = normalizar(titulo)
     for i, row in enumerate(rows):
-        if any(normalizar(cell) == titulo for cell in row):
-            return i
+        for cell in row:
+            if titulo_norm in normalizar(cell):
+                return i
     return None
 
 def extrair_bloco(rows, start_idx, end_idx):
     bloco = rows[start_idx:end_idx]
-    # remove linhas totalmente vazias
     bloco = [r for r in bloco if any(str(c).strip() for c in r)]
     if len(bloco) < 2:
         return pd.DataFrame()
 
-    # heurística: primeira linha "útil" após o título vira cabeçalho
-    # encontra a linha do cabeçalho: a primeira linha com pelo menos 2 células preenchidas
     header_i = None
     for i in range(len(bloco)):
         filled = sum(1 for c in bloco[i] if str(c).strip())
@@ -60,12 +60,10 @@ def extrair_bloco(rows, start_idx, end_idx):
     header = [str(c).strip() for c in bloco[header_i] if str(c).strip() != ""]
     data_rows = bloco[header_i + 1 :]
 
-    # corta cada linha no tamanho do header
     clean_rows = []
     for r in data_rows:
         vals = [str(c).strip() for c in r]
         vals = vals[: len(header)]
-        # pula linhas vazias
         if any(v for v in vals):
             clean_rows.append(vals)
 
@@ -91,14 +89,12 @@ except Exception:
     st.error("Não foi possível carregar a planilha (CSV). Verifique se o link continua acessível sem login.")
     st.stop()
 
-# localizar títulos e definir intervalos
 idxs = {}
 for t in TITULOS:
     i = achar_linha_titulo(rows, t)
     if i is not None:
         idxs[normalizar(t)] = i
 
-# escolhe o conjunto principal de 4 títulos (priorizando com acento)
 ordem = ["ALTAS", "VAGAS RESERVADAS", "CIRURGIAS PROGRAMADAS", "TRANSFERÊNCIAS SAIDAS"]
 if "TRANSFERÊNCIAS SAIDAS" not in idxs and "TRANSFERENCIAS SAIDAS" in idxs:
     ordem[-1] = "TRANSFERENCIAS SAIDAS"
@@ -106,17 +102,16 @@ if "TRANSFERÊNCIAS SAIDAS" not in idxs and "TRANSFERENCIAS SAIDAS" in idxs:
 faltando = [t for t in ordem if normalizar(t) not in idxs]
 if faltando:
     st.warning("Não encontrei os títulos de todas as tabelas no CSV. Confirme se na Folha1 existem exatamente estes títulos em uma célula: " + ", ".join(faltando))
+    st.info("Dica: os títulos são procurados ignorando maiúsculas/acentos. Se ainda não encontrar, me envie os títulos exatos que aparecem na planilha (ex.: 'ALTAS', 'VAGAS RESERVADAS').")
 
-# extrair blocos por intervalo
 posicoes = [(t, idxs[normalizar(t)]) for t in ordem if normalizar(t) in idxs]
 posicoes.sort(key=lambda x: x[1])
 
 blocos = {}
 for j, (titulo, start) in enumerate(posicoes):
     end = posicoes[j + 1][1] if j + 1 < len(posicoes) else len(rows)
-    blocos[titulo] = extrair_bloco(rows, start + 1, end)  # start+1 para pular a linha do título
+    blocos[titulo] = extrair_bloco(rows, start + 1, end)
 
-# layout “dashboard” 2x2
 c1, c2 = st.columns(2)
 with c1:
     render_tabela("ALTAS", blocos.get("ALTAS", pd.DataFrame()))
