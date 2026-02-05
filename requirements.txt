@@ -1,6 +1,4 @@
-painel-nir/
-app.py
-requirements.txt
-assets/
-logo_esquerda.png
-logo_direita.png
+streamlit
+pandas
+requests
+streamlit-autorefresh
