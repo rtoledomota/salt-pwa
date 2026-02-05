@@ -13,12 +13,11 @@ from streamlit_autorefresh import st_autorefresh
 # ======================
 st.set_page_config(page_title="Painel NIR - Censo Diário", layout="wide")
 
-# Paleta aproximada dos logos (ajuste fino se quiser)
-PRIMARY = "#163A9A"        # azul
+PRIMARY = "#163A9A"
 PRIMARY_DARK = "#0B2B6B"
-ACCENT_GREEN = "#22A34A"   # verde
-SCS_PURPLE = "#4B3FA6"     # roxo
-SCS_CYAN = "#33C7D6"       # ciano
+ACCENT_GREEN = "#22A34A"
+SCS_PURPLE = "#4B3FA6"
+SCS_CYAN = "#33C7D6"
 
 BG = "#F6F8FB"
 CARD_BG = "#FFFFFF"
@@ -26,20 +25,17 @@ BORDER = "#E5E7EB"
 TEXT = "#0F172A"
 MUTED = "#64748B"
 
-# Logos no repositório (ajuste extensão se necessário)
 LOGO_LEFT_PATH = Path("assets/logo_esquerda.png")
 LOGO_RIGHT_PATH = Path("assets/logo_direita.png")
 
-# Google Sheets
 SHEET_ID = "1wA--gbvOmHWcUvMBTldVC8HriI3IXfQoEvQEskCKGDk"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Folha1"
 
-# Auto refresh
 REFRESH_SECONDS = 60
 st_autorefresh(interval=REFRESH_SECONDS * 1000, key="nir_autorefresh")
 
 # ======================
-# CSS (responsivo automático: TV/desktop vs celular)
+# CSS (responsivo automático)
 # ======================
 st.markdown(
     f"""
@@ -48,7 +44,6 @@ st.markdown(
         background: {BG};
         color: {TEXT};
       }}
-
       .nir-top {{
         border-radius: 16px;
         padding: 14px 16px;
@@ -65,7 +60,6 @@ st.markdown(
         margin-top: 4px;
         opacity: 0.92;
       }}
-
       .nir-card {{
         background: {CARD_BG};
         border: 1px solid {BORDER};
@@ -83,7 +77,6 @@ st.markdown(
         margin: 0;
         line-height: 1.0;
       }}
-
       .nir-section-title {{
         font-weight: 950;
         margin-bottom: 6px;
@@ -102,14 +95,11 @@ st.markdown(
         background: #F8FAFC;
         white-space: nowrap;
       }}
-
       div[data-testid="stDataFrame"] {{
         border-radius: 12px;
         overflow: hidden;
         border: 1px solid {BORDER};
       }}
-
-      /* Celular */
       @media (max-width: 768px) {{
         .block-container {{
           padding-top: 0.8rem;
@@ -123,8 +113,6 @@ st.markdown(
         .nir-section-title {{ font-size: 14px; }}
         .nir-pill {{ font-size: 11px; }}
       }}
-
-      /* TV / FullHD / Desktop */
       @media (min-width: 1200px) {{
         .block-container {{
           padding-top: 1.4rem;
@@ -186,6 +174,7 @@ def safe_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
+    # Renomear colunas duplicadas
     cols = list(df.columns)
     seen: dict[str, int] = {}
     new_cols = []
@@ -198,6 +187,7 @@ def safe_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
             seen[key] = 0
             new_cols.append(key)
     df.columns = new_cols
+
     return df
 
 
@@ -240,29 +230,63 @@ def render_logo(path: Path):
         st.caption(f"Arquivo não encontrado: {path.as_posix()}")
 
 
+def find_col_by_contains(df: pd.DataFrame, contains_norm: str) -> str | None:
+    """Encontra a primeira coluna cujo nome (normalizado) contém um trecho."""
+    target = _norm(contains_norm)
+    for c in df.columns:
+        if target in _norm(str(c)):
+            return c
+    return None
+
+
 # ======================
-# Parsing determinístico do CSV
+# Parsing do CSV
 # ======================
 def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int) -> pd.DataFrame:
     bloco = slice_rows(rows, i_altas_header, i_vagas_title)
     if len(bloco) < 2:
         return pd.DataFrame()
 
-    header = bloco[0][:4]
-    data = [r[:4] for r in bloco[1:]]
+    # Header dinâmico: pega todas as colunas não vazias do cabeçalho
+    raw_header = [str(c).strip() for c in bloco[0]]
+    header = []
+    for h in raw_header:
+        if h != "":
+            header.append(h)
+        else:
+            break  # no seu CSV geralmente o resto é vazio
 
-    df = pd.DataFrame(data, columns=header).rename(
-        columns={
-            "ALTAS HOSPITAL": "HOSPITAL",
-            "SETOR": "SETOR",
-            "ALTAS DO DIA (ATÉ 19H)": "REALIZADAS_ATÉ_19H",
-            "ALTAS PREVISTAS 24H": "PREVISTAS_24H",
-        }
-    )
+    if len(header) < 2:
+        return pd.DataFrame()
 
-    df["REALIZADAS_ATÉ_19H"] = to_int_series(df["REALIZADAS_ATÉ_19H"])
-    df["PREVISTAS_24H"] = to_int_series(df["PREVISTAS_24H"])
-    df = df[(df["HOSPITAL"].astype(str).str.strip() != "") & (df["SETOR"].astype(str).str.strip() != "")]
+    data = []
+    for r in bloco[1:]:
+        row = [str(c).strip() for c in r[: len(header)]]
+        if any(v != "" for v in row):
+            data.append(row)
+
+    df = pd.DataFrame(data, columns=header)
+
+    # Padronização de nomes mais importantes
+    rename = {
+        "ALTAS HOSPITAL": "HOSPITAL",
+        "SETOR": "SETOR",
+    }
+    df = df.rename(columns={c: rename.get(str(c).strip(), str(c).strip()) for c in df.columns})
+
+    # Converter automaticamente colunas numéricas de altas (se existirem)
+    col_realizadas = find_col_by_contains(df, "ALTAS DO DIA")
+    col_previstas = find_col_by_contains(df, "ALTAS PREVISTAS")
+
+    if col_realizadas:
+        df[col_realizadas] = to_int_series(df[col_realizadas])
+    if col_previstas:
+        df[col_previstas] = to_int_series(df[col_previstas])
+
+    # Filtro mínimo para não mostrar linhas completamente “quebradas”
+    if "HOSPITAL" in df.columns and "SETOR" in df.columns:
+        df = df[(df["HOSPITAL"].astype(str).str.strip() != "") & (df["SETOR"].astype(str).str.strip() != "")]
+
     return df
 
 
@@ -390,31 +414,21 @@ df_transf = montar_transferencias(rows, i_transf_title)
 # ======================
 # MÉTRICAS
 # ======================
+col_realizadas = find_col_by_contains(df_altas, "ALTAS DO DIA") if not df_altas.empty else None
+col_previstas = find_col_by_contains(df_altas, "ALTAS PREVISTAS") if not df_altas.empty else None
+
+total_realizadas = int(df_altas[col_realizadas].sum()) if col_realizadas else 0
+total_previstas = int(df_altas[col_previstas].sum()) if col_previstas else 0
+
 m1, m2, m3, m4 = st.columns(4)
 with m1:
-    render_metric_card(
-        "Altas realizadas (até 19h)",
-        int(df_altas["REALIZADAS_ATÉ_19H"].sum()) if not df_altas.empty else 0,
-        PRIMARY,
-    )
+    render_metric_card("Altas realizadas (até 19h)", total_realizadas, PRIMARY)
 with m2:
-    render_metric_card(
-        "Altas previstas (24h)",
-        int(df_altas["PREVISTAS_24H"].sum()) if not df_altas.empty else 0,
-        ACCENT_GREEN,
-    )
+    render_metric_card("Altas previstas (24h)", total_previstas, ACCENT_GREEN)
 with m3:
-    render_metric_card(
-        "Vagas reservadas",
-        int(df_vagas["VAGAS_RESERVADAS"].sum()) if not df_vagas.empty else 0,
-        SCS_PURPLE,
-    )
+    render_metric_card("Vagas reservadas", int(df_vagas["VAGAS_RESERVADAS"].sum()) if not df_vagas.empty else 0, SCS_PURPLE)
 with m4:
-    render_metric_card(
-        "Cirurgias (próximo dia)",
-        int(df_cir["TOTAL"].sum()) if not df_cir.empty else 0,
-        SCS_CYAN,
-    )
+    render_metric_card("Cirurgias (próximo dia)", int(df_cir["TOTAL"].sum()) if not df_cir.empty else 0, SCS_CYAN)
 
 st.markdown("")
 
