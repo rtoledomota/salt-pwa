@@ -52,7 +52,11 @@ st.markdown(
         border: 1px solid rgba(255,255,255,0.15);
         background: linear-gradient(90deg, {PRIMARY_DARK}, {PRIMARY} 45%, {SCS_PURPLE});
         color: white;
-        text-align: center; /* centraliza */
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 80px;
       }}
       .nir-top-title {{
         font-weight: 980;
@@ -67,12 +71,13 @@ st.markdown(
         margin-right: auto;
       }}
 
-      /* Wrapper para padronizar altura dos logos */
+      /* Wrapper para logos alinhados à altura da barra */
       .nir-logo-wrap {{
         display: flex;
         align-items: center;
         justify-content: center;
         width: 100%;
+        min-height: 80px;
       }}
 
       /* Cards */
@@ -128,16 +133,22 @@ st.markdown(
           padding-left: 0.9rem;
           padding-right: 0.9rem;
         }}
-        .nir-top-title {{ font-size: 18px; }}
+        .nir-top {{
+          min-height: 60px;
+        }}
+        .nir-logo-wrap {{
+          min-height: 60px;
+        }}
+        .nir-top-title {{ font-size: 20px; }}
         .nir-top-sub {{ font-size: 12px; }}
         .nir-card-title {{ font-size: 12px; }}
         .nir-card-value {{ font-size: 22px; }}
         .nir-section-title {{ font-size: 14px; }}
         .nir-pill {{ font-size: 11px; }}
 
-        /* logos mesma altura no celular */
+        /* logos no celular */
         .nir-logo-wrap img {{
-          height: 56px !important;
+          height: 50px !important;
           width: auto !important;
           object-fit: contain !important;
         }}
@@ -150,16 +161,22 @@ st.markdown(
           padding-left: 1.6rem;
           padding-right: 1.6rem;
         }}
-        .nir-top-title {{ font-size: 34px; }}  /* título maior */
+        .nir-top {{
+          min-height: 100px;
+        }}
+        .nir-logo-wrap {{
+          min-height: 100px;
+        }}
+        .nir-top-title {{ font-size: 38px; }}
         .nir-top-sub {{ font-size: 15px; }}
         .nir-card-title {{ font-size: 13px; }}
         .nir-card-value {{ font-size: 32px; }}
         .nir-section-title {{ font-size: 16px; }}
         .nir-pill {{ font-size: 12px; }}
 
-        /* logos mesma altura na TV */
+        /* logos na TV */
         .nir-logo-wrap img {{
-          height: 96px !important;
+          height: 80px !important;
           width: auto !important;
           object-fit: contain !important;
         }}
@@ -367,7 +384,7 @@ def montar_transferencias(rows: list[list[str]], i_transf_title: int) -> pd.Data
 
 
 # ======================
-# HEADER COM LOGOS (altura padronizada por CSS)
+# HEADER COM LOGOS (alinhados à barra de título)
 # ======================
 top_l, top_c, top_r = st.columns([1.2, 5.6, 1.2])
 
