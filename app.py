@@ -1,3 +1,4 @@
+import base64
 import io
 import unicodedata
 from datetime import datetime
@@ -35,7 +36,7 @@ REFRESH_SECONDS = 60
 st_autorefresh(interval=REFRESH_SECONDS * 1000, key="nir_autorefresh")
 
 # ======================
-# CSS (responsivo automático + ajustes estéticos)
+# CSS (responsivo + header alinhado por Grid)
 # ======================
 st.markdown(
     f"""
@@ -45,39 +46,60 @@ st.markdown(
         color: {TEXT};
       }}
 
-      /* Header */
-      .nir-top {{
+      /* ===== Header Grid (alinhamento perfeito) ===== */
+      .nir-header {{
+        display: grid;
+        grid-template-columns: 1fr 4fr 1fr;
+        gap: 12px;
+        align-items: stretch;
+        width: 100%;
+      }}
+
+      .nir-header-box {{
         border-radius: 16px;
-        padding: 16px 18px;
+      }}
+
+      .nir-header-logo {{
+        background: {CARD_BG};
+        border: 1px solid {BORDER};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: var(--nir-header-h);
+        padding: 10px;
+      }}
+
+      .nir-header-logo img {{
+        height: var(--nir-logo-h);
+        width: auto;
+        object-fit: contain;
+        display: block;
+      }}
+
+      .nir-header-center {{
         border: 1px solid rgba(255,255,255,0.15);
         background: linear-gradient(90deg, {PRIMARY_DARK}, {PRIMARY} 45%, {SCS_PURPLE});
         color: white;
-        text-align: center;
+        height: var(--nir-header-h);
         display: flex;
         flex-direction: column;
+        align-items: center;
         justify-content: center;
-        min-height: 80px;
+        text-align: center;
+        padding: 12px 14px;
       }}
+
       .nir-top-title {{
         font-weight: 980;
         letter-spacing: 0.2px;
         line-height: 1.05;
-        margin: 0 auto;
+        margin: 0;
       }}
+
       .nir-top-sub {{
         margin-top: 6px;
         opacity: 0.92;
-        margin-left: auto;
-        margin-right: auto;
-      }}
-
-      /* Wrapper para logos alinhados à altura da barra */
-      .nir-logo-wrap {{
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        min-height: 80px;
+        margin-bottom: 0;
       }}
 
       /* Cards */
@@ -99,7 +121,6 @@ st.markdown(
         line-height: 1.0;
       }}
 
-      /* Seções */
       .nir-section-title {{
         font-weight: 950;
         margin-bottom: 6px;
@@ -119,7 +140,6 @@ st.markdown(
         white-space: nowrap;
       }}
 
-      /* Dataframes */
       div[data-testid="stDataFrame"] {{
         border-radius: 12px;
         overflow: hidden;
@@ -128,16 +148,14 @@ st.markdown(
 
       /* ===== Celular ===== */
       @media (max-width: 768px) {{
+        :root {{
+          --nir-header-h: 74px;
+          --nir-logo-h: 46px;
+        }}
         .block-container {{
           padding-top: 0.8rem;
           padding-left: 0.9rem;
           padding-right: 0.9rem;
-        }}
-        .nir-top {{
-          min-height: 60px;
-        }}
-        .nir-logo-wrap {{
-          min-height: 60px;
         }}
         .nir-top-title {{ font-size: 20px; }}
         .nir-top-sub {{ font-size: 12px; }}
@@ -145,41 +163,25 @@ st.markdown(
         .nir-card-value {{ font-size: 22px; }}
         .nir-section-title {{ font-size: 14px; }}
         .nir-pill {{ font-size: 11px; }}
-
-        /* logos no celular */
-        .nir-logo-wrap img {{
-          height: 50px !important;
-          width: auto !important;
-          object-fit: contain !important;
-        }}
       }}
 
       /* ===== TV/Full HD e Desktop ===== */
       @media (min-width: 1200px) {{
+        :root {{
+          --nir-header-h: 110px;
+          --nir-logo-h: 72px;
+        }}
         .block-container {{
           padding-top: 1.4rem;
           padding-left: 1.6rem;
           padding-right: 1.6rem;
         }}
-        .nir-top {{
-          min-height: 100px;
-        }}
-        .nir-logo-wrap {{
-          min-height: 100px;
-        }}
-        .nir-top-title {{ font-size: 38px; }}
+        .nir-top-title {{ font-size: 40px; }}
         .nir-top-sub {{ font-size: 15px; }}
         .nir-card-title {{ font-size: 13px; }}
         .nir-card-value {{ font-size: 32px; }}
         .nir-section-title {{ font-size: 16px; }}
         .nir-pill {{ font-size: 12px; }}
-
-        /* logos na TV */
-        .nir-logo-wrap img {{
-          height: 80px !important;
-          width: auto !important;
-          object-fit: contain !important;
-        }}
       }}
     </style>
     """,
@@ -226,7 +228,6 @@ def slice_rows(rows: list[list[str]], start: int, end: int) -> list[list[str]]:
 def safe_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame()
-
     df = df.copy()
 
     cols = list(df.columns)
@@ -241,7 +242,6 @@ def safe_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
             seen[key] = 0
             new_cols.append(key)
     df.columns = new_cols
-
     return df
 
 
@@ -277,19 +277,21 @@ def render_df(df: pd.DataFrame):
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def render_logo(path: Path):
-    if path.exists():
-        st.image(str(path), use_container_width=True)
-    else:
-        st.caption(f"Arquivo não encontrado: {path.as_posix()}")
-
-
 def find_col_by_contains(df: pd.DataFrame, contains_norm: str) -> str | None:
     target = _norm(contains_norm)
     for c in df.columns:
         if target in _norm(str(c)):
             return c
     return None
+
+
+def img_to_data_uri(path: Path) -> str:
+    if not path.exists():
+        return ""
+    mime = "image/png"
+    raw = path.read_bytes()
+    b64 = base64.b64encode(raw).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 
 # ======================
@@ -319,10 +321,8 @@ def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int)
 
     df = pd.DataFrame(data, columns=header)
 
-    rename = {
-        "ALTAS HOSPITAL": "HOSPITAL",
-        "SETOR": "SETOR",
-    }
+    # Mantém compatibilidade caso ainda exista esse nome em algum momento
+    rename = {"ALTAS HOSPITAL": "HOSPITAL", "SETOR": "SETOR"}
     df = df.rename(columns={c: rename.get(str(c).strip(), str(c).strip()) for c in df.columns})
 
     col_realizadas = find_col_by_contains(df, "ALTAS DO DIA")
@@ -338,10 +338,6 @@ def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int)
 
 
 def montar_vagas(rows: list[list[str]], i_vagas_title: int, i_transf_title: int) -> pd.DataFrame:
-    """
-    Correção: preserva a 2ª linha (ex.: UTI) mesmo quando HOSPITAL vem vazio.
-    Regra: mantém linhas com SETOR ou VAGAS, e faz forward-fill do HOSPITAL.
-    """
     bloco = slice_rows(rows, i_vagas_title + 1, i_transf_title)
     if not bloco:
         return pd.DataFrame()
@@ -358,11 +354,9 @@ def montar_vagas(rows: list[list[str]], i_vagas_title: int, i_transf_title: int)
         data.append([hosp, setor, vagas])
 
     df = pd.DataFrame(data, columns=["HOSPITAL", "SETOR", "VAGAS_RESERVADAS"])
-
     df["HOSPITAL"] = df["HOSPITAL"].replace("", pd.NA).ffill().fillna("")
     df["VAGAS_RESERVADAS"] = to_int_series(df["VAGAS_RESERVADAS"])
     df = df[df["SETOR"].astype(str).str.strip() != ""]
-
     return df
 
 
@@ -384,30 +378,27 @@ def montar_transferencias(rows: list[list[str]], i_transf_title: int) -> pd.Data
 
 
 # ======================
-# HEADER COM LOGOS (alinhados à barra de título)
+# HEADER (1 HTML com Grid, altura única)
 # ======================
-top_l, top_c, top_r = st.columns([1.2, 5.6, 1.2])
+left_uri = img_to_data_uri(LOGO_LEFT_PATH)
+right_uri = img_to_data_uri(LOGO_RIGHT_PATH)
 
-with top_l:
-    st.markdown("<div class='nir-logo-wrap'>", unsafe_allow_html=True)
-    render_logo(LOGO_LEFT_PATH)
-    st.markdown("</div>", unsafe_allow_html=True)
+left_img_html = f"<img src='{left_uri}' alt='Logo esquerda' />" if left_uri else "<div style='color:#64748B;font-weight:700'>Logo esquerda não encontrada</div>"
+right_img_html = f"<img src='{right_uri}' alt='Logo direita' />" if right_uri else "<div style='color:#64748B;font-weight:700'>Logo direita não encontrada</div>"
 
-with top_c:
-    st.markdown(
-        f"""
-        <div class="nir-top">
-          <div class="nir-top-title">Painel NIR – Censo Diário</div>
-          <div class="nir-top-sub">Atualização automática a cada {REFRESH_SECONDS}s • Fonte: Google Sheets</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with top_r:
-    st.markdown("<div class='nir-logo-wrap'>", unsafe_allow_html=True)
-    render_logo(LOGO_RIGHT_PATH)
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown(
+    f"""
+    <div class="nir-header">
+      <div class="nir-header-box nir-header-logo">{left_img_html}</div>
+      <div class="nir-header-box nir-header-center">
+        <div class="nir-top-title">Painel NIR – Censo Diário</div>
+        <div class="nir-top-sub">Atualização automática a cada {REFRESH_SECONDS}s • Fonte: Google Sheets</div>
+      </div>
+      <div class="nir-header-box nir-header-logo">{right_img_html}</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.markdown("")
 
