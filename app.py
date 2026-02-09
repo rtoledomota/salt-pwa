@@ -154,11 +154,12 @@ def baixar_csv_como_matriz(url: str) -> list[list[str]]:
     return df.values.tolist()
 
 
-def achar_linha_exata(rows: list[list[str]], texto: str) -> int | None:
-    alvo = _norm(texto)
+def achar_linha_por_substring(rows: list[list[str]], substring: str) -> int | None:
+    """Procura por uma linha que contenha a substring (normalizada)."""
+    alvo = _norm(substring)
     for i, row in enumerate(rows):
         for cell in row:
-            if _norm(cell) == alvo:
+            if alvo in _norm(cell):
                 return i
     return None
 
@@ -174,7 +175,6 @@ def safe_df_for_display(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Renomear colunas duplicadas
     cols = list(df.columns)
     seen: dict[str, int] = {}
     new_cols = []
@@ -254,7 +254,7 @@ def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int)
         if h != "":
             header.append(h)
         else:
-            break  # no seu CSV geralmente o resto é vazio
+            break
 
     if len(header) < 2:
         return pd.DataFrame()
@@ -267,14 +267,14 @@ def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int)
 
     df = pd.DataFrame(data, columns=header)
 
-    # Padronização de nomes mais importantes
+    # Padronização de nomes
     rename = {
         "ALTAS HOSPITAL": "HOSPITAL",
         "SETOR": "SETOR",
     }
     df = df.rename(columns={c: rename.get(str(c).strip(), str(c).strip()) for c in df.columns})
 
-    # Converter automaticamente colunas numéricas de altas (se existirem)
+    # Converter automaticamente colunas numéricas de altas
     col_realizadas = find_col_by_contains(df, "ALTAS DO DIA")
     col_previstas = find_col_by_contains(df, "ALTAS PREVISTAS")
 
@@ -283,7 +283,7 @@ def montar_altas(rows: list[list[str]], i_altas_header: int, i_vagas_title: int)
     if col_previstas:
         df[col_previstas] = to_int_series(df[col_previstas])
 
-    # Filtro mínimo para não mostrar linhas completamente “quebradas”
+    # Filtro mínimo
     if "HOSPITAL" in df.columns and "SETOR" in df.columns:
         df = df[(df["HOSPITAL"].astype(str).str.strip() != "") & (df["SETOR"].astype(str).str.strip() != "")]
 
@@ -387,20 +387,21 @@ except Exception:
     st.error("Não foi possível carregar o CSV da planilha. Verifique permissões/publicação do Google Sheets.")
     st.stop()
 
-i_altas_header = achar_linha_exata(rows, "ALTAS HOSPITAL")
-i_vagas_title = achar_linha_exata(rows, "VAGAS RESERVADAS")
-i_cir_title = achar_linha_exata(rows, "CIRURGIAS PROGRAMADAS - PROXIMO DIA")
-i_transf_title = achar_linha_exata(rows, "TRANSFERENCIAS/SAÍDAS")
+# Procura por substring (ignora datas entre parênteses)
+i_altas_header = achar_linha_por_substring(rows, "ALTAS")
+i_vagas_title = achar_linha_por_substring(rows, "VAGAS RESERVADAS")
+i_cir_title = achar_linha_por_substring(rows, "CIRURGIAS PROGRAMADAS")
+i_transf_title = achar_linha_por_substring(rows, "TRANSFERENCIAS")
 
 missing = []
 if i_altas_header is None:
-    missing.append("ALTAS HOSPITAL")
+    missing.append("ALTAS")
 if i_vagas_title is None:
     missing.append("VAGAS RESERVADAS")
 if i_cir_title is None:
-    missing.append("CIRURGIAS PROGRAMADAS - PROXIMO DIA")
+    missing.append("CIRURGIAS PROGRAMADAS")
 if i_transf_title is None:
-    missing.append("TRANSFERENCIAS/SAÍDAS")
+    missing.append("TRANSFERENCIAS")
 
 if missing:
     st.error("Não encontrei estes marcadores no CSV: " + ", ".join(missing))
