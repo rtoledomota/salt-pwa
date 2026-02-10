@@ -4,14 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
-  updateDoc,
   type DocumentReference,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase.client";
@@ -241,9 +239,7 @@ export default function ItemsPage() {
         </Button>
       }
     >
-      {error && (
-        <Alert variant="error">{error}</Alert>
-      )}
+      {error && <Alert variant="error">{error}</Alert>}
 
       <Card>
         <CardBody>
@@ -251,34 +247,31 @@ export default function ItemsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <Input
                 value={name}
-                onChange={setName}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Nome do item (ex: Tomate)"
                 disabled={!canInteract || saving}
                 className="sm:col-span-2"
               />
               <Input
                 value={unit}
-                onChange={setUnit}
+                onChange={(e) => setUnit(e.target.value)}
                 placeholder="Unidade (ex: kg, un, cx)"
                 disabled={!canInteract || saving}
               />
               <Input
                 value={supplier}
-                onChange={setSupplier}
+                onChange={(e) => setSupplier(e.target.value)}
                 placeholder="Fornecedor (opcional)"
                 disabled={!canInteract || saving}
               />
-              <Button
-                type="submit"
-                disabled={!canInteract || saving}
-                className="w-full"
-              >
+              <Button type="submit" disabled={!canInteract || saving} className="w-full">
                 {saving ? "Salvando..." : "Adicionar"}
               </Button>
             </div>
+
             <Input
               value={buyer}
-              onChange={setBuyer}
+              onChange={(e) => setBuyer(e.target.value)}
               placeholder="Comprador resp. (opcional)"
               disabled={!canInteract || saving}
               className="max-w-md"
@@ -309,7 +302,7 @@ export default function ItemsPage() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <Input
                               value={editingName}
-                              onChange={setEditingName}
+                              onChange={(e) => setEditingName(e.target.value)}
                               placeholder="Nome do item"
                               disabled={isBusy}
                               className="sm:col-span-2"
@@ -317,36 +310,29 @@ export default function ItemsPage() {
                             />
                             <Input
                               value={editingUnit}
-                              onChange={setEditingUnit}
+                              onChange={(e) => setEditingUnit(e.target.value)}
                               placeholder="Unidade"
                               disabled={isBusy}
                             />
                             <Input
                               value={editingSupplier}
-                              onChange={setEditingSupplier}
+                              onChange={(e) => setEditingSupplier(e.target.value)}
                               placeholder="Fornecedor"
                               disabled={isBusy}
                             />
                             <Input
                               value={editingBuyer}
-                              onChange={setEditingBuyer}
+                              onChange={(e) => setEditingBuyer(e.target.value)}
                               placeholder="Comprador"
                               disabled={isBusy}
                             />
                           </div>
+
                           <div className="flex gap-3">
-                            <Button
-                              variant="success"
-                              onClick={() => saveEdit(item.id)}
-                              disabled={isBusy}
-                            >
+                            <Button variant="success" onClick={() => saveEdit(item.id)} disabled={isBusy}>
                               {isBusy ? "Salvando..." : "Salvar"}
                             </Button>
-                            <Button
-                              variant="secondary"
-                              onClick={cancelEdit}
-                              disabled={isBusy}
-                            >
+                            <Button variant="secondary" onClick={cancelEdit} disabled={isBusy}>
                               Cancelar
                             </Button>
                           </div>
@@ -361,19 +347,12 @@ export default function ItemsPage() {
                               {item.buyer && ` • Comprador: ${item.buyer}`}
                             </div>
                           </div>
+
                           <div className="flex gap-3">
-                            <Button
-                              variant="secondary"
-                              onClick={() => startEdit(item)}
-                              disabled={isBusy}
-                            >
+                            <Button variant="secondary" onClick={() => startEdit(item)} disabled={isBusy}>
                               Editar
                             </Button>
-                            <Button
-                              variant="danger"
-                              onClick={() => removeItem(item)}
-                              disabled={isBusy}
-                            >
+                            <Button variant="danger" onClick={() => removeItem(item)} disabled={isBusy}>
                               {isBusy ? "Excluindo..." : "Excluir"}
                             </Button>
                           </div>

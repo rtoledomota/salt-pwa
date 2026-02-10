@@ -3,17 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
-  addDoc,
   collection,
   doc,
-  getDoc,
   getDocs,
   onSnapshot,
   query,
   serverTimestamp,
   setDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase.client";
 import { Page, Card, CardBody, Button, Select, Alert } from "@/components/ui/Page";
@@ -21,29 +18,25 @@ import { Page, Card, CardBody, Button, Select, Alert } from "@/components/ui/Pag
 type Store = { id: string; name: string; code: string };
 type Item = { id: string; name: string; unit: string; supplier?: string; buyer?: string };
 
-type InventoryDoc = {
-  storeId: string;
+type ShoppingListItem = {
   itemId: string;
+  itemName: string;
+  unit: string;
   currentQty: number;
   minQty: number;
+  toBuy: number;
+  supplier?: string;
+  buyer?: string;
 };
 
-function escapeCsv(value: string) {
-  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
-}
-
-function downloadTextFile(filename: string, content: string, mime = "text/csv;charset=utf-8") {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+type Order = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  items: ShoppingListItem[];
+  createdAt: Date;
+  status: "pending" | "completed";
+};
 
 export default function ShoppingListPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -55,16 +48,13 @@ export default function ShoppingListPage() {
 
   const [selectedStoreId, setSelectedStoreId] = useState<string>("");
 
-  const [inventory, setInventory] = useState<InventoryDoc[]>([]);
-  const [loadingInv, setLoadingInv] = useState(false);
+  const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
 
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedStore = useMemo(
-    () => stores.find((s) => s.id === selectedStoreId) ?? null,
-    [stores, selectedStoreId]
-  );
+  const canInteract = useMemo(() => !!user && !loadingAuth, [user, loadingAuth]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -89,8 +79,14 @@ export default function ShoppingListPage() {
           getDocs(query(collection(db, "items"))),
         ]);
 
-        const storesList: Store[] = storesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-        const itemsList: Item[] = itemsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const storesList: Store[] = storesSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
+        const itemsList: Item[] = itemsSnap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
 
         storesList.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
         itemsList.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
@@ -110,128 +106,87 @@ export default function ShoppingListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // escuta inventory SOMENTE da loja selecionada
+  // calcula shopping list quando muda loja
   useEffect(() => {
     if (!user) return;
     if (!selectedStoreId) return;
 
+    setLoadingList(true);
     setError(null);
-    setLoadingInv(true);
 
     const q = query(collection(db, "inventory"), where("storeId", "==", selectedStoreId));
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const invList: InventoryDoc[] = snap.docs.map((d) => d.data() as any);
-        setInventory(invList);
-        setLoadingInv(false);
+        const invMap: Record<string, { currentQty: number; minQty: number }> = {};
+
+        snap.docs.forEach((d) => {
+          const data = d.data() as any;
+          invMap[data.itemId] = {
+            currentQty: Number(data.currentQty ?? 0),
+            minQty: Number(data.minQty ?? 0),
+          };
+        });
+
+        const list: ShoppingListItem[] = items
+          .map((it) => {
+            const inv = invMap[it.id];
+            if (!inv) return null;
+
+            const toBuy = Math.max(0, inv.minQty - inv.currentQty);
+            if (toBuy <= 0) return null;
+
+            return {
+              itemId: it.id,
+              itemName: it.name,
+              unit: it.unit,
+              currentQty: inv.currentQty,
+              minQty: inv.minQty,
+              toBuy,
+              supplier: it.supplier,
+              buyer: it.buyer,
+            };
+          })
+          .filter(Boolean) as ShoppingListItem[];
+
+        setShoppingList(list);
+        setLoadingList(false);
       },
       (err) => {
         setError(err.message);
-        setLoadingInv(false);
+        setLoadingList(false);
       }
     );
 
     return unsub;
-  }, [user, selectedStoreId]);
-
-  const list = useMemo(() => {
-    if (!selectedStoreId) return [];
-
-    const invByItem = new Map<string, InventoryDoc>();
-    for (const inv of inventory) invByItem.set(inv.itemId, inv);
-
-    return items
-      .map((it) => {
-        const inv = invByItem.get(it.id);
-        const currentQty = inv?.currentQty ?? 0;
-        const minQty = inv?.minQty ?? 0;
-        const toBuy = Math.max(0, minQty - currentQty);
-
-        return {
-          itemId: it.id,
-          name: it.name,
-          unit: it.unit,
-          supplier: it.supplier ?? "",
-          buyer: it.buyer ?? "",
-          currentQty,
-          minQty,
-          toBuy,
-        };
-      })
-      .filter((r) => r.toBuy > 0)
-      .sort((a, b) => b.toBuy - a.toBuy);
-  }, [inventory, items, selectedStoreId]);
-
-  async function exportCsvWithMeta() {
-    // já temos supplier/buyer no list (vem do items)
-    const header = ["Item", "Unidade", "Fornecedor", "Comprador", "Atual", "Minimo", "Comprar"];
-    const rows = list.map((r) => [
-      r.name,
-      r.unit,
-      r.supplier,
-      r.buyer,
-      String(r.currentQty),
-      String(r.minQty),
-      String(r.toBuy),
-    ]);
-
-    const csv = [header, ...rows].map((cols) => cols.map(escapeCsv).join(",")).join("\n") + "\n";
-
-    const storeCode = selectedStore?.code ?? "LOJA";
-    const date = new Date();
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-
-    downloadTextFile(`lista-compras_${storeCode}_${y}-${m}-${d}.csv`, csv);
-  }
+  }, [user, selectedStoreId, items]);
 
   async function createOrder() {
-    setError(null);
-
-    if (!user) return setError("Você precisa estar logado.");
-    if (!selectedStore) return setError("Selecione uma loja.");
-    if (list.length === 0) return setError("Não há itens para comprar.");
-
-    const ok = window.confirm(
-      `Gerar pedido para a loja "${selectedStore.name}" com ${list.length} itens?`
-    );
-    if (!ok) return;
+    if (!selectedStoreId || shoppingList.length === 0) return;
 
     setCreatingOrder(true);
+    setError(null);
 
     try {
-      // 1) cria order
-      const orderRef = await addDoc(collection(db, "orders"), {
-        storeId: selectedStore.id,
-        storeCode: selectedStore.code,
+      const selectedStore = stores.find((s) => s.id === selectedStoreId);
+      if (!selectedStore) throw new Error("Loja não encontrada.");
+
+      const orderData: Omit<Order, "id"> = {
+        storeId: selectedStoreId,
         storeName: selectedStore.name,
-        status: "draft",
+        items: shoppingList,
+        createdAt: new Date(),
+        status: "pending",
+      };
+
+      await setDoc(doc(collection(db, "orders")), {
+        ...orderData,
         createdAt: serverTimestamp(),
-        createdBy: user.uid,
       });
 
-      // 2) grava subcoleção /orders/{id}/items
-      const batch = writeBatch(db);
-
-      for (const r of list) {
-        batch.set(doc(db, "orders", orderRef.id, "items", r.itemId), {
-          itemId: r.itemId,
-          itemName: r.name, // snapshot
-          unit: r.unit, // snapshot
-          currentQty: r.currentQty,
-          minQty: r.minQty,
-          toBuy: r.toBuy,
-          createdAt: serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-
-      window.location.href = `/orders/${orderRef.id}`;
+      alert("Pedido criado com sucesso!");
     } catch (e: any) {
-      setError(e?.message ?? "Erro ao gerar pedido.");
+      setError(e?.message ?? "Erro ao criar pedido.");
     } finally {
       setCreatingOrder(false);
     }
@@ -242,130 +197,116 @@ export default function ShoppingListPage() {
   return (
     <Page
       title="Lista de Compras"
-      description="Itens que precisam ser comprados baseado no estoque mínimo."
+      description="Itens que precisam ser comprados por loja."
       right={
         <div className="flex gap-2">
           <Button variant="secondary" asChild>
-            <a href="/dashboard">Voltar ao Dashboard</a>
+            <a href="/orders">Voltar para Pedidos</a>
           </Button>
-          <Button variant="secondary" asChild>
-            <a href="/inventory">Ir para Estoque</a>
-          </Button>
-          <Button variant="secondary" asChild>
-            <a href="/orders">Pedidos</a>
+          <Button variant="primary" onClick={createOrder} disabled={!canInteract || creatingOrder}>
+            {creatingOrder ? "Criando..." : "Criar Pedido"}
           </Button>
         </div>
       }
     >
-      {error && (
-        <Alert variant="error">{error}</Alert>
-      )}
+      {error && <Alert variant="error">{error}</Alert>}
 
       {loadingBase ? (
-        <Alert variant="default">Carregando lojas e itens...</Alert>
+        <Card>
+          <CardBody>
+            <p className="text-gray-600">Carregando lojas e itens...</p>
+          </CardBody>
+        </Card>
       ) : stores.length === 0 ? (
-        <Alert variant="warning">Cadastre pelo menos 1 loja em "Lojas".</Alert>
+        <Card>
+          <CardBody>
+            <p className="text-gray-600">Cadastre pelo menos 1 loja em "Lojas".</p>
+          </CardBody>
+        </Card>
       ) : items.length === 0 ? (
-        <Alert variant="warning">Cadastre itens em "Itens".</Alert>
+        <Card>
+          <CardBody>
+            <p className="text-gray-600">Cadastre itens em "Itens".</p>
+          </CardBody>
+        </Card>
       ) : (
         <>
           <Card>
             <CardBody>
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-gray-700">Loja</label>
-                    <Select
-                      value={selectedStoreId}
-                      onChange={setSelectedStoreId}
-                      disabled={creatingOrder}
-                      className="w-64"
-                    >
-                      {stores.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.code})
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  {loadingInv && (
-                    <div className="text-sm text-gray-600">Carregando estoque...</div>
-                  )}
-                </div>
-
-                <div className="flex gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={exportCsvWithMeta}
-                    disabled={list.length === 0 || creatingOrder}
-                  >
-                    Exportar CSV
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={createOrder}
-                    disabled={list.length === 0 || creatingOrder}
-                  >
-                    {creatingOrder ? "Gerando..." : "Gerar pedido"}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-4 text-sm text-gray-600">
-                Itens para comprar: <strong>{list.length}</strong>
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">Loja:</label>
+                <Select
+                  value={selectedStoreId}
+                  onChange={(e) => setSelectedStoreId(e.target.value)}
+                  disabled={creatingOrder}
+                  className="w-64"
+                >
+                  {stores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </Select>
               </div>
             </CardBody>
           </Card>
 
-          {list.length === 0 ? (
-            <Alert variant="success">Nada para comprar (estoque ok para os mínimos definidos).</Alert>
-          ) : (
-            <Card>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Item
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Unid.
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Fornecedor
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Comprador
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Atual
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Mínimo
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Comprar
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {list.map((r) => (
-                      <tr key={r.itemId}>
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{r.unit}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{r.supplier}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{r.buyer}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.currentQty}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{r.minQty}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{r.toBuy}</td>
+          <Card>
+            <CardBody>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Itens para comprar ({shoppingList.length})
+              </h3>
+
+              {loadingList ? (
+                <p className="text-gray-600">Calculando lista...</p>
+              ) : shoppingList.length === 0 ? (
+                <p className="text-gray-600">Nenhum item precisa ser comprado nesta loja.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Item
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Unidade
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Atual
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Mínimo
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Comprar
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Fornecedor
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Comprador
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {shoppingList.map((it) => (
+                        <tr key={it.itemId}>
+                          <td className="px-4 py-3 text-sm text-gray-900">{it.itemName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{it.unit}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{it.currentQty}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{it.minQty}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-green-600">{it.toBuy}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{it.supplier || "-"}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{it.buyer || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardBody>
+          </Card>
         </>
       )}
     </Page>
