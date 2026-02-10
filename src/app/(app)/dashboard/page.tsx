@@ -5,6 +5,7 @@ import { auth } from "@/lib/firebase.client";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { ensureUserProfile } from "@/lib/userProfile";
 import { Page, Card, CardBody, Button } from "@/components/ui/Page";
+import { Alert } from "@/components/ui/alert";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
