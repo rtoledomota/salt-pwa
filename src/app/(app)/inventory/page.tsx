@@ -315,7 +315,7 @@ export default function InventoryPage() {
     if (e.key === "Enter") {
       if (field === "current" && countMode) {
         const nextIndex = sortedItems.findIndex((it) => it.id === itemId) + 1;
-        if (nextIndex < sortedItems.length) {
+        if (nextIndex &lt; sortedItems.length) {
           const nextItem = sortedItems[nextIndex];
           currentRefs.current[nextItem.id]?.focus();
         }
@@ -358,7 +358,7 @@ export default function InventoryPage() {
           <p className="text-gray-600">Cadastre itens em "Itens".</p>
         </div>
       ) : (
-        <>
+        &lt;>
           {/* Barra de Ações */}
           <div className="bg-white rounded-lg border p-4">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -466,7 +466,7 @@ export default function InventoryPage() {
                     const isSaving = savingItemId === it.id;
                     const currentNum = toNumber(v.current) ?? 0;
                     const minNum = toNumber(v.min) ?? 0;
-                    const status = currentNum < minNum ? "Baixo" : "Ok";
+                    const status = currentNum &lt; minNum ? "Baixo" : "Ok";
 
                     return (
                       <tr key={it.id} className={isDirty ? "bg-yellow-50" : ""}>
@@ -474,7 +474,7 @@ export default function InventoryPage() {
                         <td className="px-4 py-3 text-sm text-gray-500">{it.unit}</td>
                         <td className="px-4 py-3">
                           <input
-                            ref={(el) => (currentRefs.current[it.id] = el)}
+                            ref={(el) => currentRefs.current[it.id] = el}
                             type="number"
                             step="0.01"
                             value={v.current}
