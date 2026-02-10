@@ -32,6 +32,10 @@ export default function DashboardPage() {
     window.location.href = "/login";
   }
 
+  function navigateTo(path: string) {
+    window.location.href = path;
+  }
+
   if (loading) return <p>Carregando...</p>;
 
   if (!user) {
@@ -58,8 +62,8 @@ export default function DashboardPage() {
           <CardBody>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Lojas</h3>
             <p className="text-gray-600 mb-4">Gerencie as lojas cadastradas.</p>
-            <Button variant="primary" asChild>
-              <a href="/stores">Acessar Lojas</a>
+            <Button variant="primary" onClick={() => navigateTo("/stores")}>
+              Acessar Lojas
             </Button>
           </CardBody>
         </Card>
@@ -68,8 +72,8 @@ export default function DashboardPage() {
           <CardBody>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Itens</h3>
             <p className="text-gray-600 mb-4">Cadastre e edite itens.</p>
-            <Button variant="primary" asChild>
-              <a href="/items">Acessar Itens</a>
+            <Button variant="primary" onClick={() => navigateTo("/items")}>
+              Acessar Itens
             </Button>
           </CardBody>
         </Card>
@@ -78,8 +82,8 @@ export default function DashboardPage() {
           <CardBody>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Estoque</h3>
             <p className="text-gray-600 mb-4">Controle o estoque por loja.</p>
-            <Button variant="primary" asChild>
-              <a href="/inventory">Acessar Estoque</a>
+            <Button variant="primary" onClick={() => navigateTo("/inventory")}>
+              Acessar Estoque
             </Button>
           </CardBody>
         </Card>
@@ -88,8 +92,8 @@ export default function DashboardPage() {
           <CardBody>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Lista de Compras</h3>
             <p className="text-gray-600 mb-4">Veja o que precisa comprar.</p>
-            <Button variant="primary" asChild>
-              <a href="/shopping-list">Acessar Lista</a>
+            <Button variant="primary" onClick={() => navigateTo("/shopping-list")}>
+              Acessar Lista
             </Button>
           </CardBody>
         </Card>
@@ -99,8 +103,8 @@ export default function DashboardPage() {
         <CardBody>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Pedidos</h3>
           <p className="text-gray-600 mb-4">Gerencie pedidos de compra.</p>
-          <Button variant="primary" asChild>
-            <a href="/orders">Acessar Pedidos</a>
+          <Button variant="primary" onClick={() => navigateTo("/orders")}>
+            Acessar Pedidos
           </Button>
         </CardBody>
       </Card>
